@@ -6,3 +6,9 @@ python3 converter.py -i svg_dir -o avd_output
 
 # 递归处理子目录
 python3 converter.py -i svg_dir -o avd_output -r
+
+
+
+https://github.com/MegatronKing/SVG-Android
+
+https://github.com/inloop/svg2android

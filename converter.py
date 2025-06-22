@@ -160,6 +160,11 @@ def convert_element_to_path(elem: ET.Element) -> ET.Element:
         # 复制stroke-linecap属性（如果存在）
         if "stroke-linecap" in elem.attrib:
             attribs["stroke-linecap"] = elem.attrib["stroke-linecap"]
+        # 新增：复制fill-opacity和stroke-opacity属性
+        if "fill-opacity" in elem.attrib:
+            attribs["fill-opacity"] = elem.attrib["fill-opacity"]
+        if "stroke-opacity" in elem.attrib:
+            attribs["stroke-opacity"] = elem.attrib["stroke-opacity"]
         
         path_elem = ET.Element(f"{{{ns}}}path", attrib=attribs)
         return path_elem
@@ -208,10 +213,21 @@ def convert_svg_to_avd(svg_content: str) -> str:
                 fill_rule = path_elem.get("fill-rule")
                 if fill_rule == "evenodd":
                     avd_attribs["android:fillType"] = "evenOdd"
+                # 新增：处理fill-rule为nonzero的情况
+                elif fill_rule == "nonzero":
+                    avd_attribs["android:fillType"] = "nonZero"
                 # 添加strokeLineCap属性（如果存在）
                 stroke_linecap = path_elem.get("stroke-linecap")
                 if stroke_linecap in ["round", "square", "butt"]:
                     avd_attribs["android:strokeLineCap"] = stroke_linecap
+                
+                # 新增：处理fill-opacity和stroke-opacity
+                fill_opacity = path_elem.get("fill-opacity")
+                if fill_opacity and fill_opacity != "inherit":
+                    avd_attribs["android:fillAlpha"] = fill_opacity
+                stroke_opacity = path_elem.get("stroke-opacity")
+                if stroke_opacity and stroke_opacity != "inherit":
+                    avd_attribs["android:strokeAlpha"] = stroke_opacity
                 
                 avd_path = ET.SubElement(vector, "path", avd_attribs)
         
@@ -230,10 +246,21 @@ def convert_svg_to_avd(svg_content: str) -> str:
             fill_rule = elem.get("fill-rule")
             if fill_rule == "evenodd":
                 avd_attribs["android:fillType"] = "evenOdd"
+            # 新增：处理fill-rule为nonzero的情况
+            elif fill_rule == "nonzero":
+                avd_attribs["android:fillType"] = "nonZero"
             # 添加strokeLineCap属性（如果存在）
             stroke_linecap = elem.get("stroke-linecap")
             if stroke_linecap in ["round", "square", "butt"]:
                 avd_attribs["android:strokeLineCap"] = stroke_linecap
+            
+            # 新增：处理fill-opacity和stroke-opacity
+            fill_opacity = elem.get("fill-opacity")
+            if fill_opacity and fill_opacity != "inherit":
+                avd_attribs["android:fillAlpha"] = fill_opacity
+            stroke_opacity = elem.get("stroke-opacity")
+            if stroke_opacity and stroke_opacity != "inherit":
+                avd_attribs["android:strokeAlpha"] = stroke_opacity
             
             avd_path = ET.SubElement(vector, "path", avd_attribs)
     
