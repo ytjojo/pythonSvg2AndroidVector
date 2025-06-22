@@ -22,10 +22,14 @@ def normalize_color(color: str) -> str:
         color = f"#{color[1]*2}{color[2]*2}{color[3]*2}"
     
     # 添加透明度通道 (#RRGGBB → #AARRGGBB)
-    if re.match(r"^#([0极a-f]{6})$", color, re.IGNORECASE):
-        return color + "FF"  # 添加完全不透明通道
+    if re.match(r"^#([0-9a-f]{6})$", color, re.IGNORECASE):
+        color += "FF"  # 添加完全不透明通道
     
-    return color  # 其他格式保持原样
+    # 修正：使用正确的字符串方法 startswith() 和 len()
+    if color.startswith("#00") and len(color) == 9:
+        return "#00000000"  # 已规范化为标准透明色格式
+    
+    return color
 
 def convert_units(value: str) -> str:
     """将像素单位转换为dp，处理无单位情况"""
@@ -40,7 +44,7 @@ def convert_line(line: ET.Element) -> str:
     x1 = line.get("x1", "0")
     y1 = line.get("y1", "0")
     x2 = line.get("x2", "0")
-    y2 = line.get("y2", "极0")
+    y2 = line.get("y2", "0")
     return f"M {x1} {y1} L {x2} {y2}"
 
 def convert_rect(rect: ET.Element) -> str:
@@ -81,7 +85,7 @@ def convert_circle(circle: ET.Element) -> str:
     return (
         f"M {cx} {s(cy - r_val)} "
         f"C {s(cx + ctrl_dist)} {s(cy - r_val)} {s(cx + r_val)} {s(cy - ctrl_dist)} {s(cx + r_val)} {cy} "
-        f"C {s(c极x + r_val)} {s(cy + ctrl_dist)} {s(cx + ctrl_dist)} {s(cy + r_val)} {cx} {s(cy + r_val)} "
+        f"C {s(cx + r_val)} {s(cy + ctrl_dist)} {s(cx + ctrl_dist)} {s(cy + r_val)} {cx} {s(cy + r_val)} "
         f"C {s(cx - ctrl_dist)} {s(cy + r_val)} {s(cx - r_val)} {s(cy + ctrl_dist)} {s(cx - r_val)} {cy} "
         f"C {s(cx - r_val)} {s(cy - ctrl_dist)} {s(cx - ctrl_dist)} {s(cy - r_val)} {cx} {s(cy - r_val)} Z"
     )
@@ -143,12 +147,21 @@ def convert_element_to_path(elem: ET.Element) -> ET.Element:
     # 创建新的路径元素
     if path_data:
         ns = "http://www.w3.org/2000/svg"
-        path_elem = ET.Element(f"{{{ns}}}path", attrib={
+        # 创建属性字典，包含fill-rule和stroke-linecap
+        attribs = {
             "d": path_data,
             "fill": elem.get("fill", ""),
             "stroke": elem.get("stroke", ""),
             "stroke-width": elem.get("stroke-width", "0")
-        })
+        }
+        # 复制fill-rule属性（如果存在）
+        if "fill-rule" in elem.attrib:
+            attribs["fill-rule"] = elem.attrib["fill-rule"]
+        # 复制stroke-linecap属性（如果存在）
+        if "stroke-linecap" in elem.attrib:
+            attribs["stroke-linecap"] = elem.attrib["stroke-linecap"]
+        
+        path_elem = ET.Element(f"{{{ns}}}path", attrib=attribs)
         return path_elem
     return None
 
@@ -185,29 +198,77 @@ def convert_svg_to_avd(svg_content: str) -> str:
                 fill_color = normalize_color(path_elem.get("fill", "#000000"))
                 stroke_color = normalize_color(path_elem.get("stroke", "#000000"))
                 
-                avd_path = ET.SubElement(vector, "path", {
+                avd_attribs = {
                     "android:pathData": path_elem.get("d", ""),
                     "android:fillColor": fill_color,
                     "android:strokeWidth": path_elem.get("stroke-width", "0"),
                     "android:strokeColor": stroke_color
-                })
+                }
+                # 添加fillType属性（如果存在）
+                fill_rule = path_elem.get("fill-rule")
+                if fill_rule == "evenodd":
+                    avd_attribs["android:fillType"] = "evenOdd"
+                # 添加strokeLineCap属性（如果存在）
+                stroke_linecap = path_elem.get("stroke-linecap")
+                if stroke_linecap in ["round", "square", "butt"]:
+                    avd_attribs["android:strokeLineCap"] = stroke_linecap
+                
+                avd_path = ET.SubElement(vector, "path", avd_attribs)
         
         # 处理路径元素
         elif elem.tag.endswith("path"):
             fill_color = normalize_color(elem.get("fill", "#000000"))
             stroke_color = normalize_color(elem.get("stroke", "#000000"))
             
-            avd_path = ET.SubElement(vector, "path", {
+            avd_attribs = {
                 "android:pathData": elem.get("d", ""),
                 "android:fillColor": fill_color,
                 "android:strokeWidth": elem.get("stroke-width", "0"),
                 "android:strokeColor": stroke_color
-            })
+            }
+            # 添加fillType属性（如果存在）
+            fill_rule = elem.get("fill-rule")
+            if fill_rule == "evenodd":
+                avd_attribs["android:fillType"] = "evenOdd"
+            # 添加strokeLineCap属性（如果存在）
+            stroke_linecap = elem.get("stroke-linecap")
+            if stroke_linecap in ["round", "square", "butt"]:
+                avd_attribs["android:strokeLineCap"] = stroke_linecap
+            
+            avd_path = ET.SubElement(vector, "path", avd_attribs)
     
     # 生成格式化 XML
     rough_xml = ET.tostring(vector, "utf-8")
     parsed_xml = minidom.parseString(rough_xml)
-    return parsed_xml.toprettyxml(indent="    ")
+    pretty_xml = parsed_xml.toprettyxml(indent="    ")
+    
+    # 后处理：使每个属性单独一行
+    # 匹配开始标签（包括自闭合标签）和XML声明
+    pattern = r'(\s*)(<\??[a-zA-Z:_][^>]*?)(\s+)([^>]*?)(/?>)'
+    def _format_attributes(match):
+        leading_indent = match.group(1)  # 标签前的缩进空白
+        tag_start = match.group(2)       # 标签开始部分（含声明）
+        whitespace = match.group(3)      # 标签与属性间的空白
+        attrs = match.group(4)           # 属性字符串
+        tag_end = match.group(5)         # 标签结束部分（> 或 />）
+        
+        # 跳过XML声明行（保持单行格式）
+        if tag_start.startswith("<?xml"):
+            return f"{leading_indent}{tag_start}{attrs}{tag_end}"
+        
+        # 提取所有属性键值对
+        attrs_list = re.findall(r'(\S+?=".*?")', attrs)
+        if not attrs_list:
+            return f"{leading_indent}{tag_start}{tag_end}"
+        
+        # 每行一个属性，保持缩进
+        attr_indent = leading_indent + '    '
+        formatted_attrs = "\n" + attr_indent + ("\n" + attr_indent).join(attrs_list)
+        
+        return f"{leading_indent}{tag_start}{formatted_attrs}{tag_end}"
+    
+    # 应用属性格式化
+    return re.sub(pattern, _format_attributes, pretty_xml)
 
 def batch_convert(input_dir: str, output_dir: str):
     """批量转换目录中的 SVG 文件"""
@@ -255,6 +316,6 @@ if __name__ == "__main__":
         output_filename = f"{os.path.splitext(os.path.basename(args.input))[0]}.xml"
         output_path = os.path.join(args.output, output_filename)
         
-        with open(output极_path, "w", encoding="utf-8") as f:
+        with open(output_path, "w", encoding="utf-8") as f:
             f.write(avd_xml)
         print(f"✅ Converted single file: {os.path.basename(args.input)} → {output_filename}")
