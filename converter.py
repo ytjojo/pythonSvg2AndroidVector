@@ -23,7 +23,7 @@ def normalize_color(color: str) -> str:
     
     # 添加透明度通道 (#RRGGBB → #AARRGGBB)
     if re.match(r"^#([0-9a-f]{6})$", color, re.IGNORECASE):
-        color += "FF"  # 添加完全不透明通道
+        color = "#FF" + color.lstrip("#")  # 添加完全不透明通道并确保只有一个#
     
     # 修正：使用正确的字符串方法 startswith() 和 len()
     if color.startswith("#00") and len(color) == 9:
@@ -160,6 +160,9 @@ def convert_element_to_path(elem: ET.Element) -> ET.Element:
         # 复制stroke-linecap属性（如果存在）
         if "stroke-linecap" in elem.attrib:
             attribs["stroke-linecap"] = elem.attrib["stroke-linecap"]
+        # 新增：复制stroke-linejoin属性（如果存在）
+        if "stroke-linejoin" in elem.attrib:
+            attribs["stroke-linejoin"] = elem.attrib["stroke-linejoin"]
         # 新增：复制fill-opacity和stroke-opacity属性
         if "fill-opacity" in elem.attrib:
             attribs["fill-opacity"] = elem.attrib["fill-opacity"]
@@ -220,6 +223,10 @@ def convert_svg_to_avd(svg_content: str) -> str:
                 stroke_linecap = path_elem.get("stroke-linecap")
                 if stroke_linecap in ["round", "square", "butt"]:
                     avd_attribs["android:strokeLineCap"] = stroke_linecap
+                # 新增：处理stroke-linejoin属性
+                stroke_linejoin = path_elem.get("stroke-linejoin")
+                if stroke_linejoin in ["miter", "round", "bevel"]:
+                    avd_attribs["android:strokeLineJoin"] = stroke_linejoin
                 
                 # 新增：处理fill-opacity和stroke-opacity
                 fill_opacity = path_elem.get("fill-opacity")
@@ -253,7 +260,11 @@ def convert_svg_to_avd(svg_content: str) -> str:
             stroke_linecap = elem.get("stroke-linecap")
             if stroke_linecap in ["round", "square", "butt"]:
                 avd_attribs["android:strokeLineCap"] = stroke_linecap
-            
+            # 新增：处理stroke-linejoin属性
+            stroke_linejoin = elem.get("stroke-linejoin")
+            if stroke_linejoin in ["miter", "round", "bevel"]:
+                avd_attribs["android:strokeLineJoin"] = stroke_linejoin
+                
             # 新增：处理fill-opacity和stroke-opacity
             fill_opacity = elem.get("fill-opacity")
             if fill_opacity and fill_opacity != "inherit":
@@ -290,7 +301,7 @@ def convert_svg_to_avd(svg_content: str) -> str:
         
         # 每行一个属性，保持缩进
         attr_indent = leading_indent + '    '
-        formatted_attrs = "\n" + attr_indent + ("\n" + attr_indent).join(attrs_list)
+        formatted_attrs =  attr_indent + (attr_indent).join(attrs_list)
         
         return f"{leading_indent}{tag_start}{formatted_attrs}{tag_end}"
     
