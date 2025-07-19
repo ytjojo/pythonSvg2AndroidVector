@@ -173,6 +173,23 @@ def convert_element_to_path(elem: ET.Element) -> ET.Element:
         return path_elem
     return None
 
+def get_inherited_attribute(elem: ET.Element, attr_name: str, default_value: str = "") -> str:
+    """获取元素的属性值，支持从父元素继承"""
+    # 首先检查元素自身的属性
+    value = elem.get(attr_name)
+    if value is not None:
+        return value
+    
+    # 如果元素自身没有该属性，则向上查找父元素
+    parent = elem.getparent() if hasattr(elem, 'getparent') else None
+    while parent is not None:
+        parent_value = parent.get(attr_name)
+        if parent_value is not None:
+            return parent_value
+        parent = parent.getparent() if hasattr(parent, 'getparent') else None
+    
+    return default_value
+
 def convert_svg_to_avd(svg_content: str) -> str:
     """转换单个 SVG 内容为 AVD XML"""
     # 解析 SVG
@@ -195,44 +212,45 @@ def convert_svg_to_avd(svg_content: str) -> str:
     vector = ET.Element("vector", attrib=vector_attrib)
     
     # 转换所有图形元素
-    for elem in svg_root.findall(".//"):
+    for elem in svg_root.findall(".//*"):
         elem_type = elem.tag.split('}')[-1]
-        
         # 处理基本形状（转换为路径）
         if elem_type in ["line", "rect", "circle", "ellipse", "polygon", "polyline"]:
             path_elem = convert_element_to_path(elem)
             if path_elem:
                 # 创建新的路径元素并添加到vector
-                fill_color = normalize_color(path_elem.get("fill", "#000000"))
-                stroke_color = normalize_color(path_elem.get("stroke", "#000000"))
+                fill_color = normalize_color(get_inherited_attribute(elem, "fill", "#000000"))
+                stroke_color = normalize_color(get_inherited_attribute(elem, "stroke", "#000000"))
                 
                 avd_attribs = {
                     "android:pathData": path_elem.get("d", ""),
                     "android:fillColor": fill_color,
-                    "android:strokeWidth": path_elem.get("stroke-width", "0"),
+                    "android:strokeWidth": get_inherited_attribute(elem, "stroke-width", "0"),
                     "android:strokeColor": stroke_color
                 }
-                # 添加fillType属性（如果存在）
-                fill_rule = path_elem.get("fill-rule")
+                # 修复：使用继承的fill-rule属性
+                fill_rule = get_inherited_attribute(elem, "fill-rule")
                 if fill_rule == "evenodd":
                     avd_attribs["android:fillType"] = "evenOdd"
-                # 新增：处理fill-rule为nonzero的情况
                 elif fill_rule == "nonzero":
                     avd_attribs["android:fillType"] = "nonZero"
-                # 添加strokeLineCap属性（如果存在）
-                stroke_linecap = path_elem.get("stroke-linecap")
+                else:
+                    avd_attribs["android:fillType"] = "evenOdd"
+
+                # 添加其他继承属性
+                stroke_linecap = get_inherited_attribute(elem, "stroke-linecap")
                 if stroke_linecap in ["round", "square", "butt"]:
                     avd_attribs["android:strokeLineCap"] = stroke_linecap
-                # 新增：处理stroke-linejoin属性
-                stroke_linejoin = path_elem.get("stroke-linejoin")
+                    
+                stroke_linejoin = get_inherited_attribute(elem, "stroke-linejoin")
                 if stroke_linejoin in ["miter", "round", "bevel"]:
                     avd_attribs["android:strokeLineJoin"] = stroke_linejoin
                 
-                # 新增：处理fill-opacity和stroke-opacity
-                fill_opacity = path_elem.get("fill-opacity")
+                fill_opacity = get_inherited_attribute(elem, "fill-opacity")
                 if fill_opacity and fill_opacity != "inherit":
                     avd_attribs["android:fillAlpha"] = fill_opacity
-                stroke_opacity = path_elem.get("stroke-opacity")
+                    
+                stroke_opacity = get_inherited_attribute(elem, "stroke-opacity")
                 if stroke_opacity and stroke_opacity != "inherit":
                     avd_attribs["android:strokeAlpha"] = stroke_opacity
                 
@@ -240,36 +258,38 @@ def convert_svg_to_avd(svg_content: str) -> str:
         
         # 处理路径元素
         elif elem.tag.endswith("path"):
-            fill_color = normalize_color(elem.get("fill", "#000000"))
-            stroke_color = normalize_color(elem.get("stroke", "#000000"))
+            fill_color = normalize_color(get_inherited_attribute(elem, "fill", "#000000"))
+            stroke_color = normalize_color(get_inherited_attribute(elem, "stroke", "#000000"))
             
             avd_attribs = {
                 "android:pathData": elem.get("d", ""),
                 "android:fillColor": fill_color,
-                "android:strokeWidth": elem.get("stroke-width", "0"),
+                "android:strokeWidth": get_inherited_attribute(elem, "stroke-width", "0"),
                 "android:strokeColor": stroke_color
             }
-            # 添加fillType属性（如果存在）
-            fill_rule = elem.get("fill-rule")
+            # 修复：使用继承的fill-rule属性
+            fill_rule = get_inherited_attribute(elem, "fill-rule")
             if fill_rule == "evenodd":
                 avd_attribs["android:fillType"] = "evenOdd"
-            # 新增：处理fill-rule为nonzero的情况
             elif fill_rule == "nonzero":
                 avd_attribs["android:fillType"] = "nonZero"
-            # 添加strokeLineCap属性（如果存在）
-            stroke_linecap = elem.get("stroke-linecap")
+            else:
+                avd_attribs["android:fillType"] = "evenOdd"
+                
+            # 添加其他继承属性
+            stroke_linecap = get_inherited_attribute(elem, "stroke-linecap")
             if stroke_linecap in ["round", "square", "butt"]:
                 avd_attribs["android:strokeLineCap"] = stroke_linecap
-            # 新增：处理stroke-linejoin属性
-            stroke_linejoin = elem.get("stroke-linejoin")
+                
+            stroke_linejoin = get_inherited_attribute(elem, "stroke-linejoin")
             if stroke_linejoin in ["miter", "round", "bevel"]:
                 avd_attribs["android:strokeLineJoin"] = stroke_linejoin
                 
-            # 新增：处理fill-opacity和stroke-opacity
-            fill_opacity = elem.get("fill-opacity")
+            fill_opacity = get_inherited_attribute(elem, "fill-opacity")
             if fill_opacity and fill_opacity != "inherit":
                 avd_attribs["android:fillAlpha"] = fill_opacity
-            stroke_opacity = elem.get("stroke-opacity")
+                
+            stroke_opacity = get_inherited_attribute(elem, "stroke-opacity")
             if stroke_opacity and stroke_opacity != "inherit":
                 avd_attribs["android:strokeAlpha"] = stroke_opacity
             
